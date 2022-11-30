@@ -9,6 +9,7 @@ Forward Resolution
 
 ```go
 import (
+    "fmt"
     "github.com/avvydomains/golang-client/avvy"
 )
 
@@ -17,7 +18,7 @@ func main() {
     chainId := 43114
     client := new(avvy.Client)
     client.Init(rpcUrl, chainId)
-    value, success := client.ResolveStandard("avvydomains.avax", client.RECORDS["EVM"])
+    value, _ := client.ResolveStandard("avvydomains.avax", client.RECORDS["EVM"])
     fmt.Println(value)
 }
 ```
