@@ -4,16 +4,18 @@ package avvy
 import (
    "log"
    "os"
-   "io/ioutil"
    "math/big"
    "strings"
    "strconv"
-   "path"
+   "embed"
    "encoding/json"
    "github.com/ethereum/go-ethereum/common"
    "github.com/ethereum/go-ethereum/ethclient"
    poseidon "github.com/avvydomains/golang-client/abi/Poseidon"
 )
+
+//go:embed contracts.json
+var contractsFile embed.FS
 
 type ClientCommonContract struct {
     Address string `json:"address"`
@@ -21,6 +23,10 @@ type ClientCommonContract struct {
 
 type ClientCommon struct {
     Contracts map[string](ClientCommonContract) `json:"contracts"`
+}
+
+type ClientCommonBase struct {
+    Chains map[string](ClientCommon) `json:"chains"`
 }
 
 type Client struct {
@@ -33,17 +39,17 @@ type Client struct {
 
 /* Loads in relevant data from Client Common lib */
 func (c *Client) InitClientCommon() {
-    contractPath := path.Join(c.clientCommonPath, "contracts", strconv.Itoa(c.chainId) + ".json")
-    content, err := ioutil.ReadFile(contractPath)
+    content, err := contractsFile.ReadFile("contracts.json")
     if err != nil {
         log.Fatal("Error opening contracts file from client common", err)
     }
-    var res ClientCommon
+    var res ClientCommonBase
     err = json.Unmarshal(content, &res)
     if err != nil {
         log.Fatal("Error converting contracts file to JSON", err)
     }
-    c.clientCommon = res
+    chainIdStr := strconv.Itoa(c.chainId)
+    c.clientCommon = res.Chains[chainIdStr]
 }
 
 /* Initializes the client */

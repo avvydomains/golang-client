@@ -21,16 +21,4 @@ func main() {
 
 # Development
 
-## Installation
-
-1. Clone this repo
-2. Clone submodules
-
-## Using an alternative client common setup
-
-Set the `AVVY_CLIENT_COMMON` environment variable to reference the client common folder you wish to use.
-
-## Building ABI
-
-Run `bash scripts/generate_abi.sh` from the main folder. This requires Python & uses the client-common submodule.
-
+See [DEVELOPMENT.md](DEVELOPMENT.md)
