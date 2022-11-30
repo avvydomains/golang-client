@@ -11,5 +11,13 @@ do
   abigen --abi=abi/$abi --pkg=$name --out=abi/$dest
 done
 rm abi/*.json
-
+(
+  cd abi
+  files=$(ls *.go)
+  for ff in $files; do
+    fname=$(echo $ff | sed 's/.go//g')
+    mkdir $fname
+    mv $ff $fname
+  done
+)
 
