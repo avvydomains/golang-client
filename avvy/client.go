@@ -141,7 +141,7 @@ func (c *Client) NameHashIteration(prevHash big.Int, label string) big.Int {
         if i < 31 {
             l1[i] = uint64(char)
         } else {
-            l2[i] = uint64(char)
+            l2[i-31] = uint64(char)
         }
     }
     n1 := asciiArray2PreimageSignal(l1)
