@@ -1,7 +1,7 @@
 
 # Installation
 
-`go get github.com/avvydomains/golang-client`
+`go get github.com/avvydomains/golang-client/avvy`
 
 # Usage
 
