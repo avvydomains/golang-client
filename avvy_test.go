@@ -2,32 +2,24 @@ package avvy
 
 import (
     "testing"
+    "fmt"
+    "math/big"
     "github.com/avvydomains/golang-client/avvy"
 )
 
-func TestNameHash(t *testing.T) {
+func buildClient() *avvy.Client {
     client := new(avvy.Client)
-    client.NameHash("test.avax")
+    client.Init("http://localhost:8545", 31337)
+    return client
 }
 
-// 
-// // TestHelloName calls greetings.Hello with a name, checking
-// // for a valid return value.
-// func TestHelloName(t *testing.T) {
-//     name := "Gladys"
-//     want := regexp.MustCompile(`\b`+name+`\b`)
-//     msg, err := Hello("Gladys")
-//     if !want.MatchString(msg) || err != nil {
-//         t.Fatalf(`Hello("Gladys") = %q, %v, want match for %#q, nil`, msg, err, want)
-//     }
-// }
-// 
-// // TestHelloEmpty calls greetings.Hello with an empty string,
-// // checking for an error.
-// func TestHelloEmpty(t *testing.T) {
-//     msg, err := Hello("")
-//     if msg != "" || err == nil {
-//         t.Fatalf(`Hello("") = %q, %v, want "", error`, msg, err)
-//     }
-// }
-// 
+func TestNameHash(t *testing.T) {
+    client := buildClient()
+    hash := client.NameHash("test.avax")
+    var expected, _ = new(big.Int).SetString("14724902060486453653675032315574462175944350516339223392990438905292905511078", 0)
+    if hash.CmpAbs(expected) != 0 {
+        fmt.Println(hash)
+        fmt.Println(expected)
+        t.Fatalf("Test hash does not match")
+    }
+}

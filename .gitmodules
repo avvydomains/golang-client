@@ -1,0 +1,6 @@
+[submodule "client-common"]
+	path = client-common
+	url = git@github.com:avvydomains/client-common.git
+[submodule "contracts"]
+	path = contracts
+	url = git@github.com:avvydomains/contracts.git
