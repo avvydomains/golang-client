@@ -18,8 +18,10 @@ func main() {
     chainId := 43114
     client := new(avvy.Client)
     client.Init(rpcUrl, chainId)
-    value, _ := client.ResolveStandard("avvydomains.avax", client.RECORDS["EVM"])
-    fmt.Println(value)
+    value, success := client.ResolveStandard("avvydomains.avax", client.RECORDS["EVM"])
+    if success {
+        fmt.Println(value)
+    }
 }
 ```
 
