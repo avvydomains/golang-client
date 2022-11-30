@@ -2,54 +2,96 @@ package avvy
 
 
 import (
-   "log"
-   "os"
-   "math/big"
-   "strings"
-   "strconv"
-   "embed"
-   "encoding/json"
-   "github.com/ethereum/go-ethereum/common"
-   "github.com/ethereum/go-ethereum/ethclient"
-   poseidon "github.com/avvydomains/golang-client/abi/Poseidon"
+    "log"
+    "os"
+    "math/big"
+    "strings"
+    "strconv"
+    "embed"
+    "encoding/json"
+    "time"
+    "github.com/ethereum/go-ethereum/common"
+    "github.com/ethereum/go-ethereum/ethclient"
+
+    // contracts
+    domain "github.com/avvydomains/golang-client/abi/Domain"
+    poseidon "github.com/avvydomains/golang-client/abi/Poseidon"
+    publicResolverV1 "github.com/avvydomains/golang-client/abi/PublicResolverV1"
+    resolverRegistryV1 "github.com/avvydomains/golang-client/abi/ResolverRegistryV1"
 )
 
 //go:embed contracts.json
-var contractsFile embed.FS
+//go:embed records.json
+var embeddedFiles embed.FS
 
 type ClientCommonContract struct {
     Address string `json:"address"`
 }
 
-type ClientCommon struct {
+type ClientCommonContracts struct {
     Contracts map[string](ClientCommonContract) `json:"contracts"`
 }
 
-type ClientCommonBase struct {
-    Chains map[string](ClientCommon) `json:"chains"`
+type ClientCommonContractsBase struct {
+    Chains map[string](ClientCommonContracts) `json:"chains"`
+}
+
+type ClientCommonRecord struct {
+    Key int `json:"key"`
+    Name string `json:"name"`
+    Label string `json:"label"`
+    Description string `json:"description"`
+}
+
+type ClientCommonRecordsBase struct {
+    Records []ClientCommonRecord `json:"records"`
+}
+
+type ResolverAddress struct {
+    Resolver common.Address
+    DatasetId *big.Int
 }
 
 type Client struct {
     rpcUrl string
     clientCommonPath string
-    clientCommon ClientCommon
+    clientCommonContracts ClientCommonContracts
     chainId int
     client *ethclient.Client
+    RECORDS map[string](big.Int)
 }
 
 /* Loads in relevant data from Client Common lib */
 func (c *Client) InitClientCommon() {
-    content, err := contractsFile.ReadFile("contracts.json")
+
+    // init contracts
+    content, err := embeddedFiles.ReadFile("contracts.json")
     if err != nil {
         log.Fatal("Error opening contracts file from client common", err)
     }
-    var res ClientCommonBase
+    var res ClientCommonContractsBase
     err = json.Unmarshal(content, &res)
     if err != nil {
         log.Fatal("Error converting contracts file to JSON", err)
     }
     chainIdStr := strconv.Itoa(c.chainId)
-    c.clientCommon = res.Chains[chainIdStr]
+    c.clientCommonContracts = res.Chains[chainIdStr]
+
+    // init records
+    content, err = embeddedFiles.ReadFile("records.json")
+    if err != nil {
+        log.Fatal("Error opening records file from client common", err)
+    }
+    var res2 ClientCommonRecordsBase
+    err = json.Unmarshal(content, &res2)
+    if err != nil {
+        log.Fatal("Error converting records file to JSON", err)
+    }
+    m := make(map[string]big.Int)
+    for _, record := range res2.Records {
+        m[record.Name] = *big.NewInt(int64(record.Key))
+    }
+    c.RECORDS = m
 }
 
 /* Initializes the client */
@@ -72,9 +114,10 @@ func (c *Client) Init(rpcUrl string, chainId int) {
 
 /* Fetches the address for a given contract */
 func (c *Client) GetContractAddress(contractName string) string {
-    return c.clientCommon.Contracts[contractName].Address
+    return c.clientCommonContracts.Contracts[contractName].Address
 }
 
+/* Gets Poseidon hash of provided name */
 func (c *Client) Poseidon(inputNums [3]big.Int) big.Int {
     poseidonAddress := c.GetContractAddress("Poseidon")
     address := common.HexToAddress(poseidonAddress)
@@ -96,6 +139,102 @@ func (c *Client) Poseidon(inputNums [3]big.Int) big.Int {
     z := new(big.Int)
     z.SetBytes(outputBytes[0:32])
     return *z
+}
+
+/* Checks the expiry date for a given name */
+func (c *Client) GetExpiry(hash big.Int) big.Int {
+    address := common.HexToAddress(c.GetContractAddress("Domain"))
+    instance, err := domain.NewDomain(address, c.client)
+    if err != nil {
+        log.Fatal("Failed to initialize contract")
+    }
+    expiry, err := instance.GetDomainExpiry(nil, &hash)
+    return *expiry
+}
+
+/* Checks if a given hash is expired */
+func (c *Client) IsExpired(hash big.Int) bool {
+    expiry := c.GetExpiry(hash)
+    now := time.Now()
+    sec := big.NewInt(now.Unix())
+    return expiry.CmpAbs(sec) == -1
+}
+
+/* Gets the resolver for a given hash */
+func (c *Client) GetResolver(domain big.Int, hash big.Int) (ResolverAddress, bool) {
+    address := common.HexToAddress(c.GetContractAddress("ResolverRegistryV1"))
+    instance, err := resolverRegistryV1.NewResolverRegistryV1(address, c.client)
+    if err != nil {
+        log.Fatal("Failed to initialize Resolver Registry contract")
+    }
+    resolverAddress, err := instance.Get(nil, &domain, &hash)
+    if err != nil {
+        return ResolverAddress{}, false
+    }
+    return resolverAddress, true
+}
+
+/* Gets the domain and hash for a given name */
+func (c *Client) GetDomainAndHash(name string) (big.Int, big.Int) {
+    nameLower := strings.ToLower(name)
+    split := strings.Split(nameLower, ".")
+    numLabels := len(split)
+    if numLabels < 2 {
+        log.Fatal("GetDomainAndHash must be called with a string that has at least two labels, separated by a period (.)")
+    }
+    topLabel := split[numLabels - 1]
+    secondLabel := split[numLabels - 2]
+    tld := secondLabel + "." + topLabel
+    domain := c.NameHash(tld)
+    var hash big.Int
+    if tld == nameLower {
+        hash = domain
+    } else {
+        hash = c.NameHash(nameLower)
+    }
+    return domain, hash
+}
+
+/* Resolves a Standard Record for a given name */
+func (c *Client) ResolveStandard(name string, key big.Int) (string, bool) {
+    domain, hash := c.GetDomainAndHash(name)
+    if c.IsExpired(hash) {
+        return "", false
+    }
+    resolver, success := c.GetResolver(domain, hash)
+    if !success {
+        return "", false
+    }
+    instance, err := publicResolverV1.NewPublicResolverV1(resolver.Resolver, c.client)
+    if err != nil {
+        return "", false
+    }
+    record, err := instance.ResolveStandard(nil, resolver.DatasetId, &hash, &key)
+    if err != nil {
+        return "", false
+    }
+    return record, true
+}
+
+/* Resolves a Custom Record for a given name */
+func (c *Client) Resolve(name string, key string) (string, bool) {
+    domain, hash := c.GetDomainAndHash(name)
+    if c.IsExpired(hash) {
+        return "", false
+    }
+    resolver, success := c.GetResolver(domain, hash)
+    if !success {
+        return "", false
+    }
+    instance, err := publicResolverV1.NewPublicResolverV1(resolver.Resolver, c.client)
+    if err != nil {
+        return "", false
+    }
+    record, err := instance.Resolve(nil, resolver.DatasetId, &hash, key)
+    if err != nil {
+        return "", false
+    }
+    return record, true
 }
 
 func num2Bits(inputNum uint64, numBits uint64) []uint64 {

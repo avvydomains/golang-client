@@ -5,6 +5,8 @@
 
 # Usage
 
+Forward Resolution
+
 ```go
 import (
     "github.com/avvydomains/golang-client/avvy"
@@ -15,7 +17,8 @@ func main() {
     chainId := 43114
     client := new(avvy.Client)
     client.Init(rpcUrl, chainId)
-    hash := client.NameHash("test.avax")
+    value, success := client.ResolveStandard("avvydomains.avax", client.RECORDS["EVM"])
+    fmt.Println(value)
 }
 ```
 

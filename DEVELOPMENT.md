@@ -16,3 +16,7 @@ Run `bash scripts/generate_abi.sh` from the main folder. This requires Python & 
 Run `python scripts/generate_contract_addresses.py` to generate `avvy/contracts.json`. This is then bundled with the package for distribution.
 
 If you are switching `AVVY_CLIENT_COMMON` you need to bundle again.
+
+## Generating records
+
+Again, the list of records is sourced from client common. To update this, run `bash scripts/generate_records.sh`
