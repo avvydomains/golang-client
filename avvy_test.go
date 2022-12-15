@@ -180,3 +180,52 @@ func TestGetDomainAndHash(t *testing.T) {
         t.Fatal("TestGetDomainAndHash: Domain seems wrong")
     }
 }
+
+func TestLookupHashSuccess(t *testing.T) {
+    client := buildClient()
+    var hash, _ = new(big.Int).SetString("5009886810970053750228119498024191690423831754312784118430229935127343039646", 0)
+    output, success := client.LookupHash(*hash)
+    if !success {
+        t.Fatal("TestLookupHashSuccess: should be successful")
+    }
+    if output != "avvy-client-common-testing.avax" {
+        t.Fatal("TestLookupHashSuccess: lookup value incorrect")
+    }
+}
+
+func TestLookupHashFailure(t *testing.T) {
+    client := buildClient()
+    var hash, _ = new(big.Int).SetString("1", 0)
+    _, success := client.LookupHash(*hash)
+    if success {
+        t.Fatal("TestLookupHashFailure: should be failure")
+    }
+}
+
+func TestReverse(t *testing.T) {
+    client := buildClient()
+    var hash, success = client.ReverseResolve(client.RECORDS["EVM"], "0x650197C550B00fdD74C0F533cAf877dD39F79270")
+    if !success {
+        t.Fatal("TestReverse: should succeed")
+    }
+    var expected, _ = new(big.Int).SetString("14115706950738347156308855345517994606210035491304426860532092805739245649140", 0)
+    if hash.Cmp(expected) != 0 {
+        t.Fatal("TestReverse: hash is incorrect")
+    }
+}
+
+func TestReverseNoReverseResolver(t *testing.T) {
+    client := buildClient()
+    var _, success = client.ReverseResolve(client.RECORDS["X_CHAIN"], "0x650197C550B00fdD74C0F533cAf877dD39F79270")
+    if success {
+        t.Fatal("TestReverseNoReverseResolver: should not succeed")
+    }
+}
+
+func TestReverseNotFound(t *testing.T) {
+    client := buildClient()
+    var _, success = client.ReverseResolve(client.RECORDS["EVM"], "0x18f4Cc86D27655A6C907B79ed65a82085D5D1A43")
+    if success {
+        t.Fatal("TestReverseNotFound: should not succeed")
+    }
+}

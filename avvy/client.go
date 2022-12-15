@@ -15,9 +15,12 @@ import (
 
     // contracts
     domain "github.com/avvydomains/golang-client/abi/Domain"
+    evmReverseResolverV1 "github.com/avvydomains/golang-client/abi/EVMReverseResolverV1"
     poseidon "github.com/avvydomains/golang-client/abi/Poseidon"
     publicResolverV1 "github.com/avvydomains/golang-client/abi/PublicResolverV1"
+    rainbowTableV1 "github.com/avvydomains/golang-client/abi/RainbowTableV1"
     resolverRegistryV1 "github.com/avvydomains/golang-client/abi/ResolverRegistryV1"
+    reverseResolverRegistryV1 "github.com/avvydomains/golang-client/abi/ReverseResolverRegistryV1"
 )
 
 //go:embed contracts.json
@@ -152,6 +155,51 @@ func (c *Client) GetExpiry(hash big.Int) big.Int {
     return *expiry
 }
 
+/* Converts a given hash into a preimage */
+func (c *Client) LookupHash(hash big.Int) (string, bool) {
+    address := common.HexToAddress(c.GetContractAddress("RainbowTableV1"))
+    instance, err := rainbowTableV1.NewRainbowTableV1(address, c.client)
+    if err != nil {
+        log.Fatal("Failed to initialize RainbowTable contract")
+    }
+    signals, err := instance.Lookup(nil, &hash)
+    if err != nil {
+        return "", false
+    }
+    preimage := c.DecodeNameHashInputSignals(signals)
+    return preimage, true
+}
+
+/* Attempts to convert a given record type & value into a hash */
+func (c *Client) ReverseResolve(key big.Int, value string) (big.Int, bool) {
+    defaultRet := big.NewInt(0)
+    if key.Int64() != 3 {
+        // only supporting evm reverse resolution right now
+        return *defaultRet, false
+    }
+    address := common.HexToAddress(c.GetContractAddress("ReverseResolverRegistryV1"))
+    instance, err := reverseResolverRegistryV1.NewReverseResolverRegistryV1(address, c.client)
+    if err != nil {
+        log.Fatal("Failed to initialize the ReverseResolverRegistry contract")
+    }
+    reverseResolverAddress, err := instance.GetResolver(nil, &key)
+    if err != nil {
+        return *defaultRet, false
+    }
+    i2, err := evmReverseResolverV1.NewEVMReverseResolverV1(reverseResolverAddress, c.client)
+    if err != nil {
+        log.Fatal("Failed to initialize EVMReverseResolver contract")
+    }
+
+    // domain is the SLD, name is the subdomain
+    ret, err := i2.Get(nil, common.HexToAddress(value))
+
+    if err != nil {
+        return *defaultRet, false
+    }
+    return *ret.Hash, true
+}
+
 /* Checks if a given hash is expired */
 func (c *Client) IsExpired(hash big.Int) bool {
     expiry := c.GetExpiry(hash)
@@ -250,6 +298,22 @@ func num2Bits(inputNum uint64, numBits uint64) []uint64 {
     return out
 }
 
+func bigInt2Bits(inputNum big.Int, numBits int64) []uint64 {
+    lc1 := big.NewInt(0)
+    e2 := big.NewInt(1)
+    outVal := big.NewInt(0)
+    out := make([]uint64, numBits)
+    var i int64 = 0
+    for i = 0; i < numBits - 1; i += 1 {
+        tmpVal := (outVal.Rsh(&inputNum, uint(i)))
+        outVal = tmpVal.And(tmpVal, big.NewInt(1))
+        out[i] = outVal.Uint64()
+        lc1 = lc1.Add(lc1, outVal.Mul(outVal, e2))
+        e2 = e2.Add(e2, e2)
+    }
+    return out
+}
+
 func bits2BigInt(inputBits []uint64) big.Int {
     lc1 := big.NewInt(0)
     e2 := big.NewInt(1)
@@ -270,6 +334,43 @@ func asciiArray2PreimageSignal(input [31]uint64) big.Int {
         }
     }
     return bits2BigInt(bits)
+}
+
+func preimageSignal2String(c1 big.Int, c2 big.Int) string {
+    c1bits := bigInt2Bits(c1, 248)
+    c2bits := bigInt2Bits(c2, 248)
+    var bits []uint64 = make([]uint64, 248 * 2)
+    for i, bit := range c1bits {
+        bits[i] = bit
+    }
+    for i, bit := range c2bits {
+        bits[i+248] = bit
+    }
+    var bytes []byte = make([]byte, 248 * 2 / 8)
+    termination := 0
+    for i, _ := range bits {
+        if i % 8 == 0 {
+            bi := bits2BigInt(bits[i:i+8])
+            _bytes := bi.Bytes()
+            if len(_bytes) > 0 {
+                bytes[i/8] = _bytes[0]
+            } else {
+                termination = i/8
+                break
+            }
+        }
+    }
+    return string(bytes[:termination])
+}
+
+func (c *Client) DecodeNameHashInputSignals(signals []*big.Int) string {
+    var labels []string = make([]string, len(signals) / 2)
+    for i, _ := range signals {
+        if i % 2 == 0 {
+            labels[len(labels)- (i/2) - 1] = preimageSignal2String(*signals[i], *signals[i+1])
+        }
+    }
+    return strings.Join(labels, ".")
 }
 
 /* Executes a single iteration of hashing */
